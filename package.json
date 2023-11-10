@@ -7,6 +7,12 @@
   "author": "Kai Aldag <kaialdag@icloud.com>",
   "license": "MIT",
   "private": false,
+  "scripts": {
+    "prestart": "source .env",
+    "start": "anvil --code-size-limit 30000 -m $MNEMONIC -f $FORK_URL",
+    "deploy:local": "forge script script/DeployPrivacy.sol --rpc-url http://localhost:8545 --code-size-limit 30000 --broadcast",
+    "test": "forge test"
+  },
   "devDependencies": {
     "@types/node": "^20.9.0",
     "@zk-kit/incremental-merkle-tree": "^1.1.0",

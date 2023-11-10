@@ -28,7 +28,7 @@ program
     "Secret nullifier to associate with deposit"
   )
   .action(async ({ token, amount, nullifier }) => {
-    console.log(token, amount, nullifier);
+    // console.log(token, amount, nullifier);
 
     // TODO: Check inputs valid as input to circuit
 
