@@ -7,7 +7,7 @@ import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.s
 import {PoolKey, PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {BaseHook} from "v4-periphery/BaseHook.sol";
-import {IncrementalBinaryTree} from "@zk-kit/merkle-tree/IncrementalBinaryTree.sol";
+import {IncrementalBinaryTree, IncrementalTreeData} from "@zk-kit/merkle-tree/IncrementalBinaryTree.sol";
 
 import {BaseFactory} from "../BaseFactory.sol";
 
@@ -18,12 +18,12 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
     error InvalidAmount(uint256 amount);
     error ProofVerificationFailed();
 
-    struct PoolState {
+    struct TokenState {
         IncrementalTreeData depositTree;
         mapping(bytes32 => bool) spendNullifiers;
     }
 
-    mapping(PoolId poolId => PoolState state) public poolStates;
+    mapping(address token => TokenState state) internal tokenStates;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
