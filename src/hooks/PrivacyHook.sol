@@ -8,6 +8,8 @@ import {PoolKey, PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/P
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {BaseHook} from "v4-periphery/BaseHook.sol";
 import {IncrementalBinaryTree, IncrementalTreeData} from "@zk-kit/merkle-tree/IncrementalBinaryTree.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {BaseFactory} from "../BaseFactory.sol";
 
@@ -16,6 +18,8 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
     using IncrementalBinaryTree for IncrementalTreeData;
 
     error InvalidAmount(uint256 amount);
+    error InsufficientAllowance(uint256 amount);
+    error InsufficientBalance(uint256 amount);
     error ProofVerificationFailed();
 
     struct TokenState {
@@ -27,12 +31,31 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
+    /// @dev Validates amount, balance of msg.sender and allowance of PrivacyHook
+    modifier checkDeposit(address token, uint256 amount) {
+        if (amount == 0) revert InvalidAmount(amount);
+        else if (IERC20(token).balanceOf(msg.sender) < amount) revert InsufficientBalance(amount);
+        else if (IERC20(token).allowance(msg.sender, address(this)) < amount) revert InsufficientAllowance(amount);
+        _;
+    }
+
     //  ─────────────────────────────────────────────────────────────────────────────
     //  Deposit Functions
     //  ─────────────────────────────────────────────────────────────────────────────
 
-    function depositFunds(address token, uint256 amount, bytes32 depositCommitment) external {
-
+    /**
+     *
+     * @param token Input token address to pull funds from
+     * @param amount Amount of token to pull
+     * @param depositCommitment Deposit commitment to insert to deposit tree. Deposit commitment = poseidon("DEPOSIT", token, 0, amount, nullifier)
+     */
+    function depositFunds(address token, uint256 amount, bytes32 depositCommitment)
+        external
+        checkDeposit(token, amount)
+    {
+        TokenState storage state = tokenStates[token];
+        state.depositTree.insert(uint256(depositCommitment));
+        SafeERC20.safeTransferFrom(IERC20(token), msg.sender, address(this), amount);
     }
 
     //  ─────────────────────────────────────────────────────────────────────────────
@@ -56,7 +79,7 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         fee = 3;
     }
 
-    function getHookWithdrawFee(PoolKey calldata key) external override view returns (uint8 fee) {
+    function getHookWithdrawFee(PoolKey calldata key) external view override returns (uint8 fee) {
         fee = 10;
     }
 
