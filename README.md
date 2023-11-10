@@ -1,4 +1,38 @@
-# A Playground for Uniswap v4 Hooks
+# Shush Swap
+
+Shush Swap is a Uniswap V4 plugin allowing private interactions with a compliant pool.
+
+# Private Swaps
+
+The private swaps hook allows users to deposit ERC-20 tokens into a custodian smart contract along with a commitment used later to facilitate swaps that are verifiably backed and may only be executed once. This allows users to anonymously swap currencies or send any ERC-20 token to another account.
+
+## Implementation
+
+To use the private swaps hook in a conforming V4 pool, users must initially approve the external hooks contract to use their input ERC-20 token. Following, users will invoke the `depositSwapPayment(IERC20 tokenIn, unit256 amount, bytes32 depositCommitment)` which will transfer an `amount` of `tokenIn` to the contract. Attached to the deposit is a private `depositCommitment` which is `poseidon("DEPOSIT", amount, nullifier)`. The nullifier is used by the prover to create proofs that a swap is associate with an existing deposit that has yet to be used. During the deposit, the `depositCommitment` is insert as a leaf in a merkle tree which is associate with the input token.
+
+When a swapper (either the original depositor or anyone with the nullifier) attempts to make a private swap they must create a proof that:
+1. They know *a* nullifier (+ `amount` and `tokenIn`) that satisfies the constraint `poseidon("DEPOSIT", amount, nullifier)` is a leaf in the merkle tree for a token (private inputs: `nullifier`, `merklePath`; public inputs: `tokenIn`, `amount`, `merkleRoot`)
+
+Prior to executing the swap, the swapper may call `prepareSwap(address swapper, address tokenIn, uint256 amount, bytes proof)` which will verify the proof and ensure:
+1. The `merkleRoot` for the `tokenIn` and `amount` matches the proof's public inputs
+2. the swap commitment (`poseidon("SWAP", amount, nullifier)`) does not exist
+
+Following the proof verification, the private swaps contract will store the `swapCommitment` (which is associated with the `tokenIn`) and increase the credit of the `swapper` by the `amount`. By increasing the `swapper`'s credit for the `tokenIn`, it allows the `swapper` to use an `amount` of `tokenIn` during a V4 swap - provided during the `beforeSwap` hook.
+
+## Variant #1: Partial swap amounts
+
+By altering the swap proving system, the private swaps hook can allow a swapper to use an `amount` of `tokenIn` where `amount` is less than or equal to their remaining balance of the initial deposit. The swapper must also specify the `swapNonce` which is a counter that increments per swap using the deposit. When adding an inital deposit to the private swaps contract, the leaf is `poseidon("DEPOSIT", 0, amount, nullifier)`. To achieve this, the contract will store the `depositCommitment` and `amount`.
+
+The swap proof is slightly modified where:
+1. The swap commitment checks the swapper know the nullifier, initial deposit amount and swapNonce (where `swapNonce = # of swaps using the deposit`)
+2. The current swap amount is less than or equal to the corresponding deposit's amount
+3. The proof outputs a newly generated deposit commitment where `depositCommitment = poseidon("DEPOSIT", swapNonce + 1, remainingAmount, nullifier)` and `remainingAmount = initialDepositAmount - swapAmount`
+
+The private swap contract contains an additional input `remainingDepositCommitment` that will be inserted to the deposit tree for the `tokenIn` and may be used later to execute further swaps.
+
+## Variant #2: Swap to stealth address
+
+One extension to the private swaps hook is to allow swappers to execute swaps to a stealth address. This stealth address can be deterministically derived from the depositor's address and their `depositNullifier`. In the `beforeSwap` hook, the private swaps hook will check if a stealth address (an output of the proof) has credited balance and will pull from this balance if so.
 
 ## Uniswap v4 Feature Summary
 
