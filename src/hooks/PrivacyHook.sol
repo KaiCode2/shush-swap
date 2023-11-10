@@ -7,13 +7,37 @@ import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.s
 import {PoolKey, PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {BaseHook} from "v4-periphery/BaseHook.sol";
+import {IncrementalBinaryTree} from "@zk-kit/merkle-tree/IncrementalBinaryTree.sol";
 
 import {BaseFactory} from "../BaseFactory.sol";
 
 contract PrivacyHook is BaseHook, IHookFeeManager {
     using PoolIdLibrary for PoolKey;
+    using IncrementalBinaryTree for IncrementalTreeData;
+
+    error InvalidAmount(uint256 amount);
+    error ProofVerificationFailed();
+
+    struct PoolState {
+        IncrementalTreeData depositTree;
+        mapping(bytes32 => bool) spendNullifiers;
+    }
+
+    mapping(PoolId poolId => PoolState state) public poolStates;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+
+    //  ─────────────────────────────────────────────────────────────────────────────
+    //  Deposit Functions
+    //  ─────────────────────────────────────────────────────────────────────────────
+
+    function depositFunds(address token, uint256 amount, bytes32 depositCommitment) external {
+
+    }
+
+    //  ─────────────────────────────────────────────────────────────────────────────
+    //  V4 Hooks
+    //  ─────────────────────────────────────────────────────────────────────────────
 
     function getHooksCalls() public pure override returns (Hooks.Calls memory) {
         return Hooks.Calls({
