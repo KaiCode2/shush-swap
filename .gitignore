@@ -13,3 +13,7 @@ bin/
 
 # Node modules
 node_modules/
+
+# Circom artifacts
+circuits/build
+circuits/*.ptau
