@@ -5,11 +5,16 @@ import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {IHookFeeManager} from "@uniswap/v4-core/contracts/interfaces/IHookFeeManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {PoolKey, PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {Fees} from "@uniswap/v4-core/contracts/Fees.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {BaseHook} from "v4-periphery/BaseHook.sol";
+import {BaseHook, IHooks} from "v4-periphery/BaseHook.sol";
+
 import {IncrementalBinaryTree, IncrementalTreeData} from "@zk-kit/merkle-tree/IncrementalBinaryTree.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IPlonkVerifier} from "../interfaces/IPlonkVerifier.sol";
+import {PlonkVerifier} from "../SpendVerifier.sol";
 
 import {BaseFactory} from "../BaseFactory.sol";
 
@@ -24,12 +29,18 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
 
     struct TokenState {
         IncrementalTreeData depositTree;
+        uint8 treeEpoch;
+        uint256[32] historicalRoots;
         mapping(bytes32 => bool) spendNullifiers;
     }
 
     mapping(address token => TokenState state) internal tokenStates;
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    IPlonkVerifier public verifier;
+
+    constructor(IPoolManager _poolManager, IPlonkVerifier _verifier) BaseHook(_poolManager) {
+        verifier = _verifier;
+    }
 
     /// @dev Validates amount, balance of msg.sender and allowance of PrivacyHook
     modifier checkDeposit(address token, uint256 amount) {
@@ -53,9 +64,48 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         external
         checkDeposit(token, amount)
     {
-        TokenState storage state = tokenStates[token];
-        state.depositTree.insert(uint256(depositCommitment));
+        _insertDepositCommitment(token, depositCommitment);
+
         SafeERC20.safeTransferFrom(IERC20(token), msg.sender, address(this), amount);
+    }
+
+    function privateSwap(
+        PoolKey memory poolKey,
+        bool zeroForOne,
+        uint256 amountIn,
+        uint256 exactAmountOut,
+        bytes32 spendNullifier,
+        bytes32 newDepositCommitment,
+        uint256[24] memory proof
+    ) external {
+        // (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolKey.toId());
+        address tokenIn = zeroForOne ? Currency.unwrap(poolKey.currency0) : Currency.unwrap(poolKey.currency1);
+        address tokenOut = zeroForOne ? Currency.unwrap(poolKey.currency1) : Currency.unwrap(poolKey.currency0);
+
+        TokenState storage state = tokenStates[tokenIn];
+        uint256[5] memory publicSignals = [
+            uint256(uint160(tokenIn)),
+            amountIn,
+            uint256(state.depositTree.root),
+            uint256(spendNullifier),
+            uint256(newDepositCommitment)
+        ];
+        if (!verifier.verifyProof(proof, publicSignals)) revert ProofVerificationFailed();
+
+        state.spendNullifiers[spendNullifier] = true;
+        _insertDepositCommitment(tokenIn, newDepositCommitment);
+
+        // BalanceDelta delta = poolManager.swap(
+        //     poolKey,
+        //     IPoolManager.SwapParams({
+        //         zeroForOne: zeroForOne,
+        //         amountSpecified: amountIn,
+        //         sqrtPriceLimitX96: 0
+        //     }),
+        //     ""
+        // );
+        // uint256 amountOut = poolManager.swap(poolKey, msg.sender, amountIn, exactAmountOut, proof);
+        SafeERC20.safeTransfer(IERC20(tokenOut), msg.sender, exactAmountOut);
     }
 
     //  ─────────────────────────────────────────────────────────────────────────────
@@ -171,6 +221,13 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
     function getHookFees(PoolKey calldata key) external view returns (uint24 fee) {
         fee = 0;
     }
+
+    function _insertDepositCommitment(address token, bytes32 depositCommitment) internal {
+        TokenState storage state = tokenStates[token];
+        state.historicalRoots[state.treeEpoch % 32] = state.depositTree.root;
+        state.depositTree.insert(uint256(depositCommitment));
+        state.treeEpoch++;
+    }
 }
 
 contract PrivacyHookFactory is BaseFactory {
@@ -187,7 +244,8 @@ contract PrivacyHookFactory is BaseFactory {
     {}
 
     function deploy(IPoolManager poolManager, bytes32 salt) public override returns (address) {
-        return address(new PrivacyHook{salt: salt}(poolManager));
+        IPlonkVerifier verifier = new PlonkVerifier();
+        return address(new PrivacyHook{salt: salt}(poolManager, verifier));
     }
 
     function _hashBytecode(IPoolManager poolManager) internal pure override returns (bytes32 bytecodeHash) {

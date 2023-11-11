@@ -18,7 +18,9 @@ template Spend (levels) {
     signal output newDepositCommitment;
     signal output spendNullifier;
 
-    
+    // TODO: Use more efficient means of checking nullifier size
+    _ <== Num2Bits(248)(nullifier);
+
     signal nullifierHash <== Poseidon(1)([nullifier]);
 
     signal spendNonce <== nonce + 1;
