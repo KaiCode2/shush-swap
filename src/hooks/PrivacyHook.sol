@@ -36,10 +36,11 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
 
     mapping(address token => TokenState state) internal tokenStates;
 
+    address public factory;
     IPlonkVerifier public verifier;
 
-    constructor(IPoolManager _poolManager, IPlonkVerifier _verifier) BaseHook(_poolManager) {
-        verifier = _verifier;
+    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
+        factory = msg.sender;
     }
 
     /// @dev Validates amount, balance of msg.sender and allowance of PrivacyHook
@@ -48,6 +49,11 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         else if (IERC20(token).balanceOf(msg.sender) < amount) revert InsufficientBalance(amount);
         else if (IERC20(token).allowance(msg.sender, address(this)) < amount) revert InsufficientAllowance(amount);
         _;
+    }
+
+    function setVerifier(IPlonkVerifier _verifier) external {
+        require(msg.sender == factory, "PrivacyHook: FORBIDDEN");
+        verifier = _verifier;
     }
 
     //  ─────────────────────────────────────────────────────────────────────────────
@@ -245,7 +251,9 @@ contract PrivacyHookFactory is BaseFactory {
 
     function deploy(IPoolManager poolManager, bytes32 salt) public override returns (address) {
         IPlonkVerifier verifier = new PlonkVerifier();
-        return address(new PrivacyHook{salt: salt}(poolManager, verifier));
+        PrivacyHook hook = new PrivacyHook{salt: salt}(poolManager);
+        hook.setVerifier(verifier);
+        return address(hook);
     }
 
     function _hashBytecode(IPoolManager poolManager) internal pure override returns (bytes32 bytecodeHash) {
