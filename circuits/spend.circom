@@ -24,19 +24,21 @@ template Spend (levels) {
     signal nullifierHash <== Poseidon(1)([nullifier]);
 
     signal spendNonce <== nonce + 1;
+    var depositConstant = 0;
+    var spendConstant = 1;
 
     signal isSpendAmountValid <== LessEqThan(248)([spendAmount, balance]);
     isSpendAmountValid === 1;
     signal balanceRemaining <== balance - spendAmount;
 
     // Verify Merkle proof
-    signal leaf <== Poseidon(5)([0, token, nonce, balance, nullifierHash]);
+    signal leaf <== Poseidon(5)([depositConstant, token, nonce, balance, nullifierHash]);
     signal {binary} depositBinIndices[levels] <== Num2Bits(levels)(depositIndices);
     signal generatedRoot <== SMTVerifier(levels)(leaf, depositElements, depositBinIndices);
     merkleRoot === generatedRoot;
 
 
-    newDepositCommitment <== Poseidon(5)([0, token, spendNonce, balanceRemaining, nullifierHash]);
-    spendNullifier <== Poseidon(4)([1, token, nonce, nullifierHash]);
+    newDepositCommitment <== Poseidon(5)([depositConstant, token, spendNonce, balanceRemaining, nullifierHash]);
+    spendNullifier <== Poseidon(4)([spendConstant, token, nonce, nullifierHash]);
 }
 component main { public [ token, spendAmount, merkleRoot ] } = Spend(20);

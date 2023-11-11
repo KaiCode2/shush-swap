@@ -22,6 +22,8 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
     using PoolIdLibrary for PoolKey;
     using IncrementalBinaryTree for IncrementalTreeData;
 
+    event Deposit(address token, uint256 amount, bytes32 depositCommitment);
+
     error InvalidAmount(uint256 amount);
     error InsufficientAllowance(uint256 amount);
     error InsufficientBalance(uint256 amount);
@@ -38,6 +40,8 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
 
     address public factory;
     IPlonkVerifier public verifier;
+
+    uint8 private constant _MAX_TREE_DEPTH = 20;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
         factory = msg.sender;
@@ -73,6 +77,8 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         _insertDepositCommitment(token, depositCommitment);
 
         SafeERC20.safeTransferFrom(IERC20(token), msg.sender, address(this), amount);
+
+        emit Deposit(token, amount, depositCommitment);
     }
 
     function privateSwap(
@@ -112,6 +118,10 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         // );
         // uint256 amountOut = poolManager.swap(poolKey, msg.sender, amountIn, exactAmountOut, proof);
         SafeERC20.safeTransfer(IERC20(tokenOut), msg.sender, exactAmountOut);
+    }
+
+    function getCurrentRoot(address token) external view returns (uint256 root) {
+        root = tokenStates[token].depositTree.root;
     }
 
     //  ─────────────────────────────────────────────────────────────────────────────
@@ -229,6 +239,9 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
     }
 
     function _insertDepositCommitment(address token, bytes32 depositCommitment) internal {
+        if (tokenStates[token].depositTree.depth == 0) {
+            tokenStates[token].depositTree.initWithDefaultZeroes(_MAX_TREE_DEPTH);
+        }
         TokenState storage state = tokenStates[token];
         state.historicalRoots[state.treeEpoch % 32] = state.depositTree.root;
         state.depositTree.insert(uint256(depositCommitment));

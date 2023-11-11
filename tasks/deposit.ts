@@ -36,19 +36,18 @@ program
 
     const startingNonce = 0;
 
-    /**
-     * depositCommitment = poseidon("DEPOSIT", token, nonce, amount, nullifier)
-     * where nonce is incrementing integer starting at 0
-     */
-    const depositCommitment = ethers.zeroPadBytes(
-      poseidon([
-        DepositHex,
-        token,
-        startingNonce,
-        amount,
-        ethers.toBigInt(ethers.toUtf8Bytes(nullifier)),
-      ]),
-      32
+    const newNull = ethers.zeroPadBytes(ethers.toUtf8Bytes(nullifier), 31);
+
+    const depositCommitmentHash = poseidon([
+      DepositHex,
+      token,
+      startingNonce,
+      amount,
+      newNull,
+    ]);
+
+    const depositCommitment = ethers.toBeHex(
+      poseidon.F.toObject(depositCommitmentHash)
     );
 
     console.log(depositCommitment);
