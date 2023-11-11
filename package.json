@@ -1,0 +1,25 @@
+{
+  "name": "shush-swap",
+  "version": "1.0.0",
+  "description": "Privacy hooks for Uniswap V4",
+  "main": "index.js",
+  "repository": "git@github.com:KaiCode2/shush-swap.git",
+  "author": "Kai Aldag <kaialdag@icloud.com>",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "prestart": "source .env",
+    "start": "anvil --code-size-limit 30000 -m $MNEMONIC -f $FORK_URL",
+    "deploy:local": "forge script script/DeployPrivacy.sol --rpc-url http://localhost:8545 --code-size-limit 30000 --broadcast",
+    "test": "forge test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "@zk-kit/incremental-merkle-tree": "^1.1.0",
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
+    "commander": "^11.1.0",
+    "ethers": "^6.8.1",
+    "snarkjs": "^0.7.2"
+  }
+}
