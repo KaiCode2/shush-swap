@@ -22,6 +22,7 @@ template Spend (levels) {
     _ <== Num2Bits(248)(nullifier);
 
     signal nullifierHash <== Poseidon(1)([nullifier]);
+    log("nullifier hash: ", nullifierHash);
 
     signal spendNonce <== nonce + 1;
     var depositConstant = 0;
@@ -35,6 +36,8 @@ template Spend (levels) {
     signal leaf <== Poseidon(5)([depositConstant, token, nonce, balance, nullifierHash]);
     signal {binary} depositBinIndices[levels] <== Num2Bits(levels)(depositIndices);
     signal generatedRoot <== SMTVerifier(levels)(leaf, depositElements, depositBinIndices);
+    log("recreated leaf: ", leaf);
+    log("produced root: ", generatedRoot);
     merkleRoot === generatedRoot;
 
 

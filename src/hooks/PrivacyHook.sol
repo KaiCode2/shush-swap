@@ -2,6 +2,7 @@
 pragma solidity ^0.8.15;
 
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {TransferHelper} from "v4-periphery/libraries/TransferHelper.sol";
 import {IHookFeeManager} from "@uniswap/v4-core/contracts/interfaces/IHookFeeManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {PoolKey, PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
@@ -11,18 +12,18 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {BaseHook, IHooks} from "v4-periphery/BaseHook.sol";
 
 import {IncrementalBinaryTree, IncrementalTreeData} from "@zk-kit/merkle-tree/IncrementalBinaryTree.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {IPlonkVerifier} from "../interfaces/IPlonkVerifier.sol";
 import {PlonkVerifier} from "../SpendVerifier.sol";
 
 import {BaseFactory} from "../BaseFactory.sol";
 
 contract PrivacyHook is BaseHook, IHookFeeManager {
+    using TransferHelper for IERC20Minimal;
     using PoolIdLibrary for PoolKey;
     using IncrementalBinaryTree for IncrementalTreeData;
 
-    event Deposit(address token, uint256 amount, bytes32 depositCommitment);
+    event Deposit(address token, uint256 amount, uint256 leafIndex, bytes32 depositCommitment);
 
     error InvalidAmount(uint256 amount);
     error InsufficientAllowance(uint256 amount);
@@ -49,9 +50,13 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
 
     /// @dev Validates amount, balance of msg.sender and allowance of PrivacyHook
     modifier checkDeposit(address token, uint256 amount) {
-        if (amount == 0) revert InvalidAmount(amount);
-        else if (IERC20(token).balanceOf(msg.sender) < amount) revert InsufficientBalance(amount);
-        else if (IERC20(token).allowance(msg.sender, address(this)) < amount) revert InsufficientAllowance(amount);
+        if (amount == 0) {
+            revert InvalidAmount(amount);
+        } else if (IERC20Minimal(token).balanceOf(msg.sender) < amount) {
+            revert InsufficientBalance(amount);
+        } else if (IERC20Minimal(token).allowance(msg.sender, address(this)) < amount) {
+            revert InsufficientAllowance(amount);
+        }
         _;
     }
 
@@ -74,11 +79,11 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         external
         checkDeposit(token, amount)
     {
-        _insertDepositCommitment(token, depositCommitment);
+        uint256 leafIndex = _insertDepositCommitment(token, depositCommitment);
 
-        SafeERC20.safeTransferFrom(IERC20(token), msg.sender, address(this), amount);
+        IERC20Minimal(token).safeTransferFrom(msg.sender, address(this), amount);
 
-        emit Deposit(token, amount, depositCommitment);
+        emit Deposit(token, amount, leafIndex, depositCommitment);
     }
 
     function privateSwap(
@@ -105,8 +110,8 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         if (!verifier.verifyProof(proof, publicSignals)) revert ProofVerificationFailed();
 
         state.spendNullifiers[spendNullifier] = true;
-        _insertDepositCommitment(tokenIn, newDepositCommitment);
-
+        uint256 leafIndex = _insertDepositCommitment(tokenIn, newDepositCommitment);
+        emit Deposit(tokenIn, amountIn, leafIndex, newDepositCommitment);
         // BalanceDelta delta = poolManager.swap(
         //     poolKey,
         //     IPoolManager.SwapParams({
@@ -117,7 +122,7 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         //     ""
         // );
         // uint256 amountOut = poolManager.swap(poolKey, msg.sender, amountIn, exactAmountOut, proof);
-        SafeERC20.safeTransfer(IERC20(tokenOut), msg.sender, exactAmountOut);
+        IERC20Minimal(tokenOut).safeTransferFrom(address(this), msg.sender, exactAmountOut);
     }
 
     function getCurrentRoot(address token) external view returns (uint256 root) {
@@ -238,14 +243,16 @@ contract PrivacyHook is BaseHook, IHookFeeManager {
         fee = 0;
     }
 
-    function _insertDepositCommitment(address token, bytes32 depositCommitment) internal {
-        if (tokenStates[token].depositTree.depth == 0) {
-            tokenStates[token].depositTree.initWithDefaultZeroes(_MAX_TREE_DEPTH);
-        }
+    function _insertDepositCommitment(address token, bytes32 depositCommitment) internal returns (uint256 leafIndex) {
         TokenState storage state = tokenStates[token];
+        if (state.depositTree.depth == 0) {
+            state.depositTree.init(_MAX_TREE_DEPTH, 0);
+        }
         state.historicalRoots[state.treeEpoch % 32] = state.depositTree.root;
         state.depositTree.insert(uint256(depositCommitment));
         state.treeEpoch++;
+
+        leafIndex = state.depositTree.numberOfLeaves - 1;
     }
 }
 

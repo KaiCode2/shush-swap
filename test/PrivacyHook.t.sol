@@ -49,13 +49,13 @@ contract PrivacyTest is Test, TestPoolManager, Deployers, GasSnapshot {
         caller.addLiquidity(poolKey, address(this), TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether);
     }
 
-    // function testDeposittokenA() public {
-    //     caller.deposit(address(tokenA), address(this), address(this), 1e18);
-    // }
+    function testDeposittokenA() public {
+        caller.deposit(address(tokenA), address(this), address(this), 1e18);
+    }
 
-    // function testDeposittokenB() public {
-    //     caller.deposit(address(tokenB), address(this), address(this), 1e18);
-    // }
+    function testDeposittokenB() public {
+        caller.deposit(address(tokenB), address(this), address(this), 1e18);
+    }
 
     // function testHookFee() public {
     //     // Check the hook fee
