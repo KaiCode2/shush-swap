@@ -28,6 +28,14 @@ contract MyHook is BaseHook, IHookFeeManager {
         });
     }
 
+    function getHookSwapFee(PoolKey calldata key) external view returns (uint8 fee) {
+        fee = 3;
+    }
+
+    function getHookWithdrawFee(PoolKey calldata key) external override view returns (uint8 fee) {
+        fee = 10;
+    }
+
     function beforeInitialize(address sender, PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata)
         external
         override
